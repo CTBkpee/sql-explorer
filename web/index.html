@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQL Explorer</title>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <main>
+    <h1>SQL Explorer</h1>
+    <p id="status" role="status">Loading local analysis runtime…</p>
+    <label for="sql">T-SQL script</label>
+    <textarea id="sql" rows="18" spellcheck="false" disabled></textarea>
+    <button id="analyze" type="button" disabled>Analyze</button>
+    <pre id="output" aria-live="polite"></pre>
+  </main>
+  <script src="./vendor/pyodide/pyodide.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

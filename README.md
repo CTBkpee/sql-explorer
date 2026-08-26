@@ -1,14 +1,42 @@
 # SQL Explorer
 
-Paste one T-SQL script. Get colour-coded CTEs with every reference highlighted, a
-layered dependency graph, dead-code markers, and live editing.
+Paste one T-SQL script. SQL Explorer colours its CTEs and references, draws the
+dependency graph, flags safe-to-identify dead code, checks UNION shape, and updates
+as you edit.
 
-**Everything runs in your browser.** The SQL is parsed locally by
-[sqlglot](https://github.com/tobymao/sqlglot) compiled to WebAssembly via Pyodide.
-Nothing is uploaded, nothing is stored, and the page makes no network request after
-it loads. You can verify that in the browser's network tab.
+## Architecture and confidentiality
 
-Status: **under construction** — scaffold only. See `sqlx-001` for the build plan.
+Everything runs in the browser. Pyodide runs Python in WebAssembly and sqlglot parses
+the script locally. Both the runtime and parser are vendored with this site and served
+from the same origin: there is no CDN, analytics, telemetry, persistence, or server
+round trip. Your SQL never leaves the machine; the browser network tab makes that
+directly inspectable.
+
+This is deliberately a static, client-side design. It keeps pasted scripts private
+while making the tool straightforward to host and audit.
+
+## Scope
+
+Version 1 analyses one pasted T-SQL script at a time. Version 2 is the line for
+multi-object analysis, temp-table and table-variable support, schema-aware physical
+table star expansion, and richer per-column workflows.
+
+## Known limits
+
+- `MERGE` is refused because sqlglot does not provide reliable lineage for it.
+- Temp tables and table variables are not followed across statements in version 1.
+- `SELECT *` from a physical table remains unresolved without a supplied schema.
+
+When the parser cannot resolve something, the tool reports it as unknown rather than
+guessing.
+
+## Future AI seam
+
+The analysis result is a JSON document, so an optional assistant could attach after
+parsing: for example, it could explain the already-derived graph or propose an edit
+plan. It is intentionally absent from version 1. Enabling it would require an explicit
+user-controlled data-sharing choice, a clear provider and retention policy, and a
+separate review of what script content may leave the browser.
 
 ## Python analysis contract
 

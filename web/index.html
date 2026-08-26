@@ -5,15 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SQL Explorer</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main>
     <h1>SQL Explorer</h1>
     <p id="status" role="status">Loading local analysis runtime…</p>
-    <label for="sql">T-SQL script</label>
-    <textarea id="sql" rows="18" spellcheck="false" disabled></textarea>
-    <button id="analyze" type="button" disabled>Analyze</button>
-    <pre id="output" aria-live="polite"></pre>
+    <section class="source-pane" aria-label="T-SQL source">
+      <div id="gutter" aria-hidden="true"></div>
+      <pre id="code" aria-hidden="true"></pre>
+      <label class="sr-only" for="sql">T-SQL script</label>
+      <textarea id="sql" spellcheck="false" disabled></textarea>
+    </section>
+    <p id="stale" hidden>Showing stale analysis while this edit is invalid.</p>
+    <ul id="diagnostics" aria-live="polite"></ul>
+    <details><summary>Raw analysis document</summary><pre id="output"></pre></details>
   </main>
   <script src="./vendor/pyodide/pyodide.js"></script>
   <script type="module" src="./app.js"></script>

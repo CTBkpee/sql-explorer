@@ -1,9 +1,64 @@
 """CTE metadata, dependencies, and deterministic DAG layers."""
 
-import re
 from collections import defaultdict
 
 from sqlglot import exp
+
+_ID_START = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_#@")
+_ID_BODY = _ID_START | set("0123456789$")
+
+
+def _name_span(sql: str, name: str, start_from: int) -> tuple[int, int] | None:
+    """First real occurrence of ``name`` in ``sql`` at or after ``start_from``.
+
+    Scans identifiers while skipping line/block comments, string literals, and
+    bracketed identifiers, so a CTE name that also appears inside a preceding
+    comment (``-- cte_base: ...`` above ``WITH cte_base AS (``) or a string
+    literal never anchors the definition. Mirrors ``web/highlight.js``'s
+    ``identifierRanges`` so the Python offset and the browser scan agree on the
+    same definition token. Returns the ``(start, end)`` slice of the match, or
+    ``None`` when the name is not found as a real token.
+    """
+    wanted = name.lower()
+    cursor, length = 0, len(sql)
+    while cursor < length:
+        char = sql[cursor]
+        if char == "'" or (char == "N" and sql[cursor + 1:cursor + 2] == "'"):
+            cursor += 2 if char == "N" else 1
+            while cursor < length:
+                if sql[cursor] == "'" and sql[cursor + 1:cursor + 2] == "'":
+                    cursor += 2
+                    continue
+                if sql[cursor] == "'":
+                    cursor += 1
+                    break
+                cursor += 1
+            continue
+        if sql[cursor:cursor + 2] == "--":
+            newline = sql.find("\n", cursor + 2)
+            cursor = length if newline < 0 else newline + 1
+            continue
+        if sql[cursor:cursor + 2] == "/*":
+            close = sql.find("*/", cursor + 2)
+            cursor = length if close < 0 else close + 2
+            continue
+        if char == "[":
+            close = sql.find("]", cursor + 1)
+            if close >= 0:
+                if cursor >= start_from and sql[cursor + 1:close].lower() == wanted:
+                    return cursor, close + 1
+                cursor = close + 1
+                continue
+        if char in _ID_START:
+            begin = cursor
+            cursor += 1
+            while cursor < length and sql[cursor] in _ID_BODY:
+                cursor += 1
+            if begin >= start_from and sql[begin:cursor].lower() == wanted:
+                return begin, cursor
+            continue
+        cursor += 1
+    return None
 
 
 def _output_columns(cte: exp.CTE) -> list[str]:
@@ -25,13 +80,15 @@ def discover(expressions: list[exp.Expression], batch: dict) -> tuple[list[dict]
     records, edges = [], []
     for ordinal, cte in enumerate(cte_nodes):
         name = cte.alias_or_name
-        match = re.search(r"\b" + re.escape(name) + r"\b", batch["sql"][seen_at:], re.I)
-        relative = seen_at + (match.start() if match else 0)
-        if match:
-            seen_at = relative + len(name)
+        span = _name_span(batch["sql"], name, seen_at)
+        if span is not None:
+            relative, relative_end = span
+            seen_at = relative_end
+        else:
+            relative, relative_end = seen_at, seen_at + len(name)
         record = {"id": f"b{batch['index']}:{name}", "batch": batch["index"], "name": name,
                   "ordinal": ordinal, "start": batch["start"] + relative,
-                  "end": batch["start"] + relative + len(name), "columns": _output_columns(cte),
+                  "end": batch["start"] + relative_end, "columns": _output_columns(cte),
                   "resolved": True}
         records.append(record)
         for table in cte.this.find_all(exp.Table):

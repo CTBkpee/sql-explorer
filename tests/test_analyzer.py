@@ -316,3 +316,39 @@ def test_offsets_survive_crlf_and_consecutive_go_lines():
     result = assert_offsets_are_exact(sql)
     assert all(batch["parsed"] for batch in result["batches"])
     assert [cte["name"] for cte in result["ctes"]] == ["cte_x"]
+
+
+def test_browser_analyzer_copy_is_in_sync_with_the_source_package():
+    # web/analyzer/ is a generated copy (tools/sync-analyzer.sh) that Pyodide loads.
+    # A fix to analyzer/ that is not re-synced ships a stale analyzer to the browser
+    # while the test suite stays green — run tools/sync-analyzer.sh after any edit.
+    source = Path(__file__).resolve().parent.parent / "analyzer"
+    served = Path(__file__).resolve().parent.parent / "web" / "analyzer"
+    for path in sorted(source.glob("*.py")):
+        assert (served / path.name).read_text() == path.read_text(), (
+            f"{path.name} differs; re-run tools/sync-analyzer.sh")
+
+
+def test_comment_line_above_a_cte_does_not_capture_the_definition_offset():
+    # The exact gate reproducer: a `-- cte_base` comment sits directly above the
+    # definition. A naive `\bcte_base\b` search anchors inside the comment and
+    # jump-to-definition scrolls there; the offset must land on `WITH cte_base AS`.
+    sql = "-- cte_base: pull the raw order rows\nWITH cte_base AS (SELECT id FROM orders) SELECT id FROM cte_base;"
+    result = assert_offsets_are_exact(sql)
+    cte = result["ctes"][0]
+    assert cte["start"] == sql.index("WITH ") + len("WITH ")
+    assert sql.index("cte_base") < cte["start"]  # the comment's occurrence is earlier and skipped
+
+
+def test_definition_offsets_skip_preceding_comment_and_string_occurrences():
+    sql = (FIXTURES / "commented_ctes.sql").read_text()
+    result = assert_offsets_are_exact(sql)
+    by_name = {cte["name"]: cte for cte in result["ctes"]}
+    # cte_orders' name appears first inside the leading `--` comment line.
+    assert sql[by_name["cte_orders"]["start"]:].startswith("cte_orders AS")
+    assert sql.index("-- cte_orders") < by_name["cte_orders"]["start"]
+    # cte_region's name appears first inside a `/* */` block comment and a string
+    # literal ('cte_region summary'); the definition still anchors on the real token.
+    assert sql[by_name["cte_region"]["start"]:].startswith("cte_region AS")
+    assert sql.index("/* cte_region") < by_name["cte_region"]["start"]
+    assert sql.index("'cte_region summary'") < by_name["cte_region"]["start"]

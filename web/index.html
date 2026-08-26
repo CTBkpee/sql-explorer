@@ -11,12 +11,18 @@
   <main>
     <h1>SQL Explorer</h1>
     <p id="status" role="status">Loading local analysis runtime…</p>
-    <section class="source-pane" aria-label="T-SQL source">
-      <div id="gutter" aria-hidden="true"></div>
-      <pre id="code" aria-hidden="true"></pre>
-      <label class="sr-only" for="sql">T-SQL script</label>
-      <textarea id="sql" spellcheck="false" disabled></textarea>
-    </section>
+    <div class="workspace">
+      <section class="source-pane" aria-label="T-SQL source">
+        <div id="gutter" aria-hidden="true"></div>
+        <pre id="code" aria-hidden="true"></pre>
+        <label class="sr-only" for="sql">T-SQL script</label>
+        <textarea id="sql" spellcheck="false" disabled></textarea>
+      </section>
+      <aside class="analysis-pane" aria-label="Dependency analysis">
+        <section class="graph-panel"><h2>Dependencies</h2><div id="graph"></div></section>
+        <section id="markers" class="marker-panel"></section>
+      </aside>
+    </div>
     <p id="stale" hidden>Showing stale analysis while this edit is invalid.</p>
     <ul id="diagnostics" aria-live="polite"></ul>
     <details><summary>Raw analysis document</summary><pre id="output"></pre></details>

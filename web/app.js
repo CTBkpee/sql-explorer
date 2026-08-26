@@ -1,6 +1,8 @@
 import { startAnalysisRuntime } from "./boot.js";
 import { createEditor } from "./editor.js";
 import { cteAtOffset, invalidBatchRanges, renderHighlight } from "./highlight.js";
+import { renderGraph } from "./graph.js";
+import { renderMarkers } from "./markers.js";
 
 const status = document.querySelector("#status");
 const textarea = document.querySelector("#sql");
@@ -8,6 +10,8 @@ const output = document.querySelector("#output");
 const stale = document.querySelector("#stale");
 const diagnostics = document.querySelector("#diagnostics");
 const pane = document.querySelector(".source-pane");
+const graph = document.querySelector("#graph");
+const markers = document.querySelector("#markers");
 
 export const sourcePaneState = { selectedCteId: null };
 globalThis.sqlExplorerSourcePane = sourcePaneState;
@@ -23,8 +27,11 @@ function render(result, isStale) {
   const marked = renderHighlight(visible, textarea.value, sourcePaneState.selectedCteId);
   displayedRanges = marked.ranges;
   editor.setMarkup(marked.html);
+  renderGraph(graph, visible, sourcePaneState.selectedCteId, selectCte);
+  renderMarkers(markers, visible);
   output.textContent = JSON.stringify(result, null, 2);
   pane.classList.toggle("is-stale", isStale);
+  graph.closest(".analysis-pane").classList.toggle("is-stale", isStale);
   stale.hidden = !isStale;
   diagnostics.replaceChildren(...result.diagnostics.map((item) => {
     const row = document.createElement("li");
@@ -39,11 +46,11 @@ function render(result, isStale) {
   }
 }
 
-function selectCte(range) {
-  if (!range) return;
-  sourcePaneState.selectedCteId = range.cte.id;
+function selectCte(cte) {
+  if (!cte) return;
+  sourcePaneState.selectedCteId = cte.id;
   render(latestDocument || lastGoodDocument, hasParseError(latestDocument || { diagnostics: [] }));
-  editor.scrollTo(range.cte.start);
+  editor.scrollTo(cte.start);
 }
 
 async function analyzeScript(analyze, sql) {
@@ -64,7 +71,7 @@ try {
     code: document.querySelector("#code"),
     gutter: document.querySelector("#gutter"),
     onChange: (sql) => analyzeScript(analyze, sql).catch((error) => { status.textContent = `Analysis failed: ${error.message}`; }),
-    onTokenClick: (offset) => selectCte(cteAtOffset(displayedRanges, offset)),
+    onTokenClick: (offset) => selectCte(cteAtOffset(displayedRanges, offset)?.cte),
   });
   textarea.disabled = false;
   status.textContent = "Analysis runtime ready. Paste T-SQL to begin.";

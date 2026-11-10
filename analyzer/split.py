@@ -3,7 +3,6 @@
 import re
 
 import sqlglot
-from sqlglot.errors import ParseError
 
 GO_PATTERN = r"(?im)^\s*GO\s*$"
 
@@ -36,7 +35,7 @@ def parse_batches(sql: str) -> list[dict]:
                 item["expressions"] = sqlglot.parse(text, dialect="tsql")
                 item["parsed"] = True
                 item["statement_count"] = len(item["expressions"])
-            except ParseError as exc:
+            except Exception as exc:
                 item["diagnostics"].append({"level": "error", "reason": str(exc)})
         batches.append(item)
     return batches

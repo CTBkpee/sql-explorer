@@ -3,6 +3,8 @@
 from sqlglot import exp
 from sqlglot.lineage import lineage as sqlglot_lineage
 
+from .ctes import select_for
+
 
 def _flatten(root) -> tuple[list[dict], list[dict], bool]:
     nodes, edges, visited = [], [], set()
@@ -35,7 +37,7 @@ def _flatten(root) -> tuple[list[dict], list[dict], bool]:
 
 def for_expression(expression, batch_index: int) -> list[dict]:
     """Build lineage records for the statement's final SELECT outputs."""
-    select = expression if isinstance(expression, exp.Select) else expression.find(exp.Select)
+    select = select_for(expression)
     if not select:
         return []
     result = []

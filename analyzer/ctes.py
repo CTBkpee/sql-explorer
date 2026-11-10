@@ -61,55 +61,92 @@ def _name_span(sql: str, name: str, start_from: int) -> tuple[int, int] | None:
     return None
 
 
+def query_expression(expression):
+    """Unwrap a statement's query, without searching nested SELECT lists."""
+    while isinstance(expression, (exp.Create, exp.Insert, exp.Subquery, exp.Paren)):
+        expression = (expression.args.get("expression") if isinstance(expression, (exp.Create, exp.Insert))
+                      else expression.this)
+    return expression
+
+
+def select_for(expression):
+    """The leftmost SELECT supplies a query's output names."""
+    expression = query_expression(expression)
+    while isinstance(expression, exp.SetOperation):
+        expression = query_expression(expression.this)
+    return expression if isinstance(expression, exp.Select) else None
+
+
+def reused_names(expressions):
+    """Casefolded names defined more than once within a batch."""
+    seen, reused = set(), set()
+    for statement in expressions:
+        if statement is None:
+            continue
+        for cte in statement.find_all(exp.CTE):
+            name = cte.alias_or_name.casefold()
+            if name in seen:
+                reused.add(name)
+            seen.add(name)
+    return reused
+
+
+REUSED_REASON = ("this CTE name is defined by more than one statement in the batch; "
+                 "rename one or separate the statements with GO")
+
+
 def _output_columns(cte: exp.CTE) -> list[str]:
     declared = [column.name for column in (cte.args.get("alias") or exp.TableAlias()).columns]
     if declared:
         return declared
-    query = cte.this
-    select = query if isinstance(query, exp.Select) else query.find(exp.Select)
-    if not select:
-        return []
-    return [item.alias_or_name or "*" for item in select.expressions]
+    select = select_for(cte.this)
+    return [item.alias_or_name or "*" for item in select.expressions] if select else []
 
 
 def discover(expressions: list[exp.Expression], batch: dict) -> tuple[list[dict], list[dict]]:
-    """Return CTE records and outward read edges for one parsed batch."""
-    cte_nodes = [cte for expression in expressions for cte in expression.find_all(exp.CTE)]
-    names = {cte.alias_or_name.lower() for cte in cte_nodes}
+    """Return CTE records and statement-scoped outward read edges."""
     seen_at = 0
     records, edges = [], []
-    for ordinal, cte in enumerate(cte_nodes):
-        name = cte.alias_or_name
-        span = _name_span(batch["sql"], name, seen_at)
-        if span is not None:
-            relative, relative_end = span
-            seen_at = relative_end
-        else:
-            relative, relative_end = seen_at, seen_at + len(name)
-        record = {"id": f"b{batch['index']}:{name}", "batch": batch["index"], "name": name,
-                  "ordinal": ordinal, "start": batch["start"] + relative,
-                  "end": batch["start"] + relative_end, "columns": _output_columns(cte),
-                  "resolved": True}
-        records.append(record)
-        for table in cte.this.find_all(exp.Table):
-            target = table.name
-            if target.lower() == name.lower():
-                continue
-            edges.append({"batch": batch["index"], "source": record["id"],
-                          "target": f"b{batch['index']}:{target}" if target.lower() in names else target,
-                          "kind": "cte" if target.lower() in names else "table"})
-    # sqlglot cannot infer physical schemas, but a star from an earlier CTE has a known shape.
-    by_name = {record["name"].lower(): record for record in records}
-    for cte, record in zip(cte_nodes, records):
-        select = cte.this if isinstance(cte.this, exp.Select) else cte.this.find(exp.Select)
-        if not select or not any(isinstance(item, exp.Star) for item in select.expressions):
+    for statement in expressions:
+        if statement is None:
             continue
-        direct_tables = [table for table in select.find_all(exp.Table)
-                         if table.find_ancestor(exp.Select) is select]
-        if len(direct_tables) == 1 and direct_tables[0].name.lower() in by_name:
-            record["columns"] = list(by_name[direct_tables[0].name.lower()]["columns"])
-        else:
-            record["resolved"] = False
+        cte_nodes = list(statement.find_all(exp.CTE))
+        names = {cte.alias_or_name.casefold(): cte.alias_or_name for cte in cte_nodes}
+        local = []
+        for cte in cte_nodes:
+            name = cte.alias_or_name
+            span = _name_span(batch["sql"], name, seen_at)
+            if span is not None:
+                relative, relative_end = span
+                seen_at = relative_end
+            else:
+                relative, relative_end = seen_at, seen_at + len(name)
+            record = {"id": f"b{batch['index']}:{name}", "batch": batch["index"], "name": name,
+                      "ordinal": len(records), "start": batch["start"] + relative,
+                      "end": batch["start"] + relative_end, "columns": _output_columns(cte),
+                      "resolved": True}
+            records.append(record)
+            local.append(record)
+            for table in cte.this.find_all(exp.Table):
+                target = table.name
+                if target.casefold() == name.casefold():
+                    continue
+                cte_name = names.get(target.casefold()) if not table.db and not table.catalog else None
+                edges.append({"batch": batch["index"], "source": record["id"],
+                              "target": f"b{batch['index']}:{cte_name}" if cte_name else target,
+                              "kind": "cte" if cte_name else "table"})
+        # A physical schema is unknown; a single earlier CTE has a known shape.
+        by_name = {record["name"].casefold(): record for record in local}
+        for cte, record in zip(cte_nodes, local):
+            select = select_for(cte.this)
+            if not select or not any(isinstance(item, exp.Star) for item in select.expressions):
+                continue
+            direct_tables = [table for table in select.find_all(exp.Table)
+                             if table.find_ancestor(exp.Select) is select]
+            if len(direct_tables) == 1 and direct_tables[0].name.casefold() in by_name:
+                record["columns"] = list(by_name[direct_tables[0].name.casefold()]["columns"])
+            else:
+                record["resolved"] = False
     return records, _unique_edges(edges)
 
 

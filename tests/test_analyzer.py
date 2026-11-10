@@ -301,6 +301,33 @@ def assert_offsets_are_exact(sql):
         assert sql[batch["start"]:batch["end"]] == batch["sql"]
     for cte in result["ctes"]:
         assert sql[cte["start"]:cte["end"]].lower() == cte["name"].lower()
+    from sqlglot import exp
+    from analyzer.split import parse_batches
+    identifiers, stars, literals = set(), set(), set()
+    for batch in parse_batches(sql):
+        for statement in batch['expressions']:
+            if statement is None:
+                continue
+            for node in statement.find_all(exp.Identifier):
+                if 'start' in node.meta and 'end' in node.meta:
+                    start = batch['start'] + node.meta['start']
+                    end = batch['start'] + node.meta['end'] + 1
+                    identifiers.add((start, end, sql[start:end]))
+            for node in statement.find_all(exp.Star):
+                if 'start' in node.meta and 'end' in node.meta:
+                    start = batch['start'] + node.meta['start']
+                    end = batch['start'] + node.meta['end'] + 1
+                    stars.add((start, end, sql[start:end]))
+            # Unnamed literals and stars have no Identifier; use their own parser meta.
+            for node in statement.find_all(exp.Literal):
+                if 'start' in node.meta and 'end' in node.meta:
+                    start = batch['start'] + node.meta['start']
+                    end = batch['start'] + node.meta['end'] + 1
+                    literals.add((start, end, sql[start:end]))
+    for item in result["columns"]:
+        assert (item['start'], item['end'], item['name']) in identifiers | stars | literals
+    for item in result["references"]:
+        assert (item['start'], item['end'], item['name']) in identifiers | stars
     return result
 
 

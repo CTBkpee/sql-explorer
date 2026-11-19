@@ -4,6 +4,7 @@ import { cteAtOffset, invalidBatchRanges, renderHighlight } from "./highlight.js
 import { renderGraph } from "./graph.js";
 import { renderMarkers } from "./markers.js";
 import { createColumnLineage, columnKey, columnSelection } from "./columns.js";
+import { createChecklist } from "./checklist.js";
 
 const status = document.querySelector("#status");
 const textarea = document.querySelector("#sql");
@@ -31,6 +32,11 @@ let selectedLineage = null;
 let analysisGeneration = 0;
 let editor;
 let lineage;
+const checklist = createChecklist({
+  container: document.querySelector("#checklist"),
+  call: (...args) => globalThis.add_column_plan(...args),
+  scrollTo: (offset) => editor.scrollTo(offset),
+});
 
 function hasParseError(result) { return result.diagnostics.some((item) => item.level === "error"); }
 function isCurrent() { return latestDocument && analyzedSql === textarea.value && !hasParseError(latestDocument); }
@@ -85,6 +91,7 @@ function render(result, isStale) {
   renderGraph(graph, visible, sourcePaneState.selectedCteId, selectCte, isStale ? null : selectedLineage);
   renderMarkers(markers, visible);
   renderColumns(visible);
+  checklist.update(visible, textarea.value, isStale);
   output.textContent = JSON.stringify(result, null, 2);
   pane.classList.toggle("is-stale", isStale);
   graph.closest(".analysis-pane").classList.toggle("is-stale", isStale);

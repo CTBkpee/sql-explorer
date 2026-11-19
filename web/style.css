@@ -31,3 +31,21 @@ mark.cte-token { padding: 0; color: inherit; background: var(--cte-colour); bord
 .union-warning { color: #75552e; background: #f2e5c9; border-left: 4px solid #b98b42; }
 .empty-note { margin: 0 0 .9rem; color: #65776d; font-size: .9rem; }
 @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } }
+
+#code { position: relative; z-index: 2; }
+mark.column-token { padding: 0; color: inherit; background: transparent; border-radius: 2px; }
+mark.column-token[role="button"] { text-decoration: underline dotted #789080; text-underline-offset: 3px; }
+mark.column-token.is-contributing { background: #fae2a1; box-shadow: inset 0 -2px #a66a23; }
+mark.column-token:focus { outline: 2px solid #456b88; outline-offset: 1px; }
+.graph-terminal { cursor: pointer; outline: none; }
+.graph-terminal .graph-node-shape { fill: #f2e5c9; stroke: #8a7247; stroke-width: 1.5; }
+.graph-terminal:focus .graph-node-shape { stroke: #456b88; stroke-width: 4; }
+.graph-node.is-contributing .graph-node-shape { stroke: #a66a23; stroke-width: 4; }
+.graph-edge.is-contributing { stroke: #a66a23; stroke-width: 4; }
+.column-group { margin: .5rem 0; }
+.column-group h3 { font-size: .9rem; margin: .5rem 0 .25rem; }
+.column-group button { margin: .15rem .25rem .15rem 0; padding: .25rem .45rem; border: 1px solid #adc0b0; border-radius: .25rem; background: #edf2e8; color: #24362e; cursor: pointer; }
+.column-group button[aria-pressed="true"] { background: #fae2a1; border-color: #a66a23; }
+.column-group button:focus-visible { outline: 2px solid #456b88; outline-offset: 2px; }
+.column-group button:disabled { cursor: default; opacity: .7; }
+.analysis-pane.is-stale .column-panel { opacity: .45; }

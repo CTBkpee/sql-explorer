@@ -4,6 +4,8 @@ Paste one T-SQL script. SQL Explorer colours its CTEs and references, draws the
 dependency graph, flags safe-to-identify dead code, checks UNION shape, and updates
 as you edit.
 
+Version 1.1 added per-column lineage across the source and graph, plus an add-a-column checklist for every downstream route.
+
 ## Architecture and confidentiality
 
 Everything runs in the browser. Pyodide runs Python in WebAssembly and sqlglot parses
@@ -24,8 +26,13 @@ table star expansion, and richer per-column workflows.
 ## Known limits
 
 - `MERGE` is refused because sqlglot does not provide reliable lineage for it.
-- Temp tables and table variables are not followed across statements in version 1.
+- Multi-object analysis and following temp tables or table variables across statements
+  remain version 2 work.
 - `SELECT *` from a physical table remains unresolved without a supplied schema.
+- The checklist cannot route a column that is not visible in the pasted script;
+  adding one from a physical table requires a schema, planned for version 2.
+- Already-projected detection matches output names case-insensitively; check that
+  a matching name is the column you mean. It does not prove matching lineage.
 
 When the parser cannot resolve something, the tool reports it as unknown rather than
 guessing.
@@ -137,9 +144,22 @@ without raising. It uses a probe SELECT with the statement's WITH clause for a C
 and keeps a single in-memory parse memo keyed by the exact SQL text. Node ids are
 local to one result. A reused CTE owner id returns the failure shape above;
 a unique terminal id still resolves through the CTE of its own statement.
-`analyze()` makes no additional lineage calls for these keys;
-the browser chooses when to call this entry point.
+`analyze()` stays cheap: it makes no additional lineage calls for these keys.
 Building `columns`, `references` and `terminal` is linear in the number of records.
+
+The browser uses hybrid eager/on-click column lineage. After rendering and first
+paint, it starts an eager pass only when both `eligible <= EAGER_COLUMN_LIMIT`
+and `eligible * sql.length <= EAGER_WORK_LIMIT`. Here `eligible` counts all resolved
+`columns` records in the document, including terminal outputs. The shipped values
+in `web/columns.js` are `EAGER_COLUMN_LIMIT = 24`, `EAGER_WORK_LIMIT = 30000` and
+`EAGER_TIME_BUDGET_MS = 750`.
+The pass yields between calls and checks elapsed wall-clock time before each call;
+at the budget it stops starting calls, leaving unreached columns to compute on click.
+An in-progress call finishes normally, so 750 ms is not a hard limit on that call.
+Completing every eligible column eagerly is not guaranteed. Above either admission
+limit, columns compute on click from the start. Both triggers share one cache per
+analysis: clicking a cached column makes no Python call. Editing cancels the old
+pass and discards its cache. Parse-error documents do not run a pass.
 
 `analyzer.checklist.add_column_plan(sql, owner_id, column) ->
 {visible, reason, paths, path_count, truncated}` computes a read-only checklist
